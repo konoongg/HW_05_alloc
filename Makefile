@@ -1,10 +1,11 @@
 PWD := $(shell pwd)
 KERNEL_DIR ?= /lib/modules/$(shell uname -r)/build
 
-DRV_NAME := my_module_kalloc5
+DRV_NAME := my_module_kalloc56
 MODULE_PATH := /lib/modules/$(shell uname -r)/extra
+TEST_DIR := test
 
-.PHONY: build run remove install uninstall clean check reload help
+.PHONY: build run remove install uninstall clean check reload test help
 
 all: build
 
@@ -29,7 +30,6 @@ install:
 	sudo cp $(DRV_NAME).ko $(MODULE_PATH)/
 	sudo depmod -a
 	@echo "Модуль установлен"
-
 
 uninstall:
 	@echo "Удаление модуля из системы..."
@@ -56,6 +56,39 @@ check:
 	@echo ""
 	@echo "3. Информация о модуле:"
 	@modinfo $(DRV_NAME) 2>/dev/null || echo "Информация недоступна"
+	@echo ""
+	@echo "4. Проверка параметров модуля:"
+	@if lsmod | grep -q $(DRV_NAME); then \
+		echo "Параметры модуля:"; \
+		ls -la /sys/module/$(DRV_NAME)/parameters/ 2>/dev/null || echo "Параметры недоступны"; \
+	fi
+
+test:
+	@echo "=== Запуск тестов ==="
+	@echo "1. Проверка наличия тестового скрипта..."
+	@if [ ! -f "$(TEST_DIR)/test_allocator.py" ]; then \
+		echo "Ошибка: тестовый скрипт не найден в $(TEST_DIR)/"; \
+		exit 1; \
+	fi
+	@echo "✓ Тестовый скрипт найден"
+	@echo ""
+	@echo "2. Проверка загрузки модуля..."
+	@if ! lsmod | grep -q $(DRV_NAME); then \
+		echo "Модуль не загружен. Загружаю..."; \
+		$(MAKE) run > /dev/null 2>&1; \
+		sleep 1; \
+	fi
+	@if lsmod | grep -q $(DRV_NAME); then \
+		echo "✓ Модуль загружен"; \
+	else \
+		echo "✗ Не удалось загрузить модуль"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "3. Запуск тестового скрипта..."
+	@cd $(TEST_DIR) && python3 test_allocator.py
+	@echo ""
+	@echo "✓ Тесты завершены"
 
 reload: remove build run
 	@echo "Модуль перезагружен"
@@ -69,5 +102,6 @@ help:
 	@echo "  make uninstall - полное удаление модуля"
 	@echo "  make clean     - очистка файлов сборки"
 	@echo "  make check     - проверка состояния модуля"
+	@echo "  make test      - запуск автоматических тестов"
 	@echo "  make reload    - перезагрузка модуля"
 	@echo "  make help      - эта справка"
